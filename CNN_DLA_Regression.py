@@ -88,12 +88,6 @@ for i in range(len(Abs_Info['N_DLA'])):
     Index.append(i)
 
 
-# plt.plot(X[11485],Y[11485])
-# plt.xlim(912*(1+Z[11485]), 1215*(1+Z[11485]))
-# for TEST in DLA_Z[11485]:
-#     plt.plot( [(1+TEST)*1215, (1+TEST)*1215], [min(Y[8397]), max(Y[8397])] )
-# plt.show()
-
 
 # Splits data into strips of sertain width and then moves the fram some percent of the given width, Datapoints
 # past the last fram is not included, so all frames are the same length
@@ -112,7 +106,7 @@ def Data_Splitting(X=X, Y=Y, Z=Z, DLA_Z=DLA_Z, DELTA=DELTA, LOG_NHI=LOG_NHI, DV9
         if DLA_Z != []:
             z = Z[i]
             Ly_lim = (1+z)*912
-            Lya = (1+z)*1215
+            Lya = (1+z)*1215.67
             if Lya >= 3674 + Band_size:
                 band_start = max(3674, Ly_lim)
                 j = 0
@@ -124,10 +118,10 @@ def Data_Splitting(X=X, Y=Y, Z=Z, DLA_Z=DLA_Z, DELTA=DELTA, LOG_NHI=LOG_NHI, DV9
                     viable_DLAs = 0
                     for II in range(len(DLA_Z[i])):
                         z = DLA_Z[i][II]
-                        if band_start + j < (z + 1) * 1215 < band_start + j + Band_size:
+                        if band_start + j < (z + 1) * 1215.67 < band_start + j + Band_size:
                             n_DLAs += 1
-                            if band_start + j + (1 - DLA_place_lim) / 2 * Band_size < (z + 1) * 1215 < band_start + j + Band_size - (1 - DLA_place_lim) / 2 * Band_size:
-                                Z_index = wave.tolist().index(min(wave, key=lambda x: abs(x - (z + 1) * 1215)))
+                            if band_start + j + (1 - DLA_place_lim) / 2 * Band_size < (z + 1) * 1215.67 < band_start + j + Band_size - (1 - DLA_place_lim) / 2 * Band_size:
+                                Z_index = wave.tolist().index(min(wave, key=lambda x: abs(x - (z + 1) * 1215.67)))
                                 if all(x <= max(flux) / 2 for x in flux[round(Z_index - scale * 0.5 * Min_DLA_width):round(Z_index - scale * 0.5 * Min_DLA_width)]):
                                     viable_DLAs += 1
                                     redshift = z
@@ -154,7 +148,7 @@ t_0 = t.time()
 
 if True:
     import itertools
-    combs = [[200],[1],[0.8],[0.05]]
+    combs = [[200],[1],[1],[0.05]]
     #combs = [[],[],[],[]]
     zipped = itertools.product(*combs)
     Accs = []
@@ -178,7 +172,7 @@ if True:
 
         # X = np.array(X)
         # Y = np.array([1 if len(y)!=0 else 0 for y in DLA_Z])
-
+        t_0 = t.time()
         X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.1, random_state=42, shuffle=False)
 
         scaler = StandardScaler()
@@ -200,16 +194,18 @@ if True:
             tf.keras.layers.Dense(1, activation='linear')
         ])
 
-        model.compile(optimizer='adam', loss='mean_squared_error')  # , metrics='accuracy')
+        # model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.01), loss='mean_squared_error')#, metrics='accuracy')
+        model.compile(optimizer='adam', loss='mean_squared_error')
     #    model.fit(X_train_scaled, y_train, epochs=35, batch_size=32, validation_split=0.2)
-        model.fit(X_train_scaled, y_train, epochs=5, batch_size=32, validation_split=0.2)
+        reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.4, patience=5, min_lr=0.001)
+        history = model.fit(X_train_scaled, y_train, epochs=5, batch_size=32, validation_split=0.2)#, callbacks=[reduce_lr])
 
         # Get predictions and print results
         diff = []
         pred = model.predict(X_test_scaled)
         for i in range(len(pred)):
             diff.append(abs(pred[i]-y_test[i])[0])
-        print('Avarage dist:', sum(diff)/len(diff)*0.25, 'Å')
+        print('Avarage dist:', sum(diff)/len(diff)*1/scale, 'Å')
 
     i = diff.index(max(diff))
     plt.plot(X_test_scaled[i], color = 'C0')
@@ -219,12 +215,35 @@ if True:
     plt.legend(['Spectra','True center','Guessed center'])
     plt.show()
 
+    pd.DataFrame(history.history).plot(xlabel='Epochs')
+    plt.show()
 
+    tf.keras.models.save_model(model, 'C:\\Users\\mikke\\PycharmProjects\\pythonProject3\\Models\\CNN_Reg3.h5')
+    #model.save('C:\\Users\\mikke\\PycharmProjects\\pythonProject3\\Models\\CNN_Reg.keras')
+
+   # Plots the 10 worst estimations
+# n = 10
+# for i in [a for a in np.argsort(diff)[-n:]]:
+#     plt.plot(X_test_scaled[i], color='C0')
+#     plt.plot([y_test[i], y_test[i]], [min(X_test_scaled[i]), max(X_test_scaled[i])], color='C1')
+#     plt.plot([pred[i], pred[i]], [min(X_test_scaled[i]), max(X_test_scaled[i])], color='C2')
+#     plt.title('Offset: ' + str(diff[i]))
+#     plt.legend(['Spectra', 'True center', 'Guessed center'])
+#     plt.show()
+
+   # Plots the 10 "random" estimations
+# for i in range(10):
+#     i = i*10
+#     plt.plot(X_test_scaled[i], color = 'C0')
+#     plt.plot([y_test[i],y_test[i]],[min(X_test_scaled[i]), max(X_test_scaled[i])], color = 'C1')
+#     plt.plot([pred[i],pred[i]],[min(X_test_scaled[i]), max(X_test_scaled[i])], color = 'C2')
+#     plt.title('Offset: ' + str(diff[i]))
+#     plt.legend(['Spectra','True center','Guessed center'])
+#     plt.show()
 
             ###############################################
             ########## Hyperparameter Tuning  #############
             ###############################################
-
 
 
 if False:
